@@ -6,6 +6,7 @@ import { z } from 'zod';
 const taskSchema = z.object({
   title: z.string().min(1),
   dueDate: z.string().optional().nullable(),
+  priority: z.enum(['low', 'medium', 'high']).default('medium'),
 });
 
 export async function GET() {
@@ -22,10 +23,8 @@ export async function GET() {
 
     return NextResponse.json(tasks);
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('[TASKS GET]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -37,24 +36,23 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { title, dueDate } = taskSchema.parse(body);
+    const { title, dueDate, priority } = taskSchema.parse(body);
 
     const task = await prisma.task.create({
       data: {
         title,
         dueDate: dueDate ? new Date(dueDate) : null,
+        priority,
         userId: user.userId,
       },
     });
 
-    return NextResponse.json(task);
+    return NextResponse.json(task, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid request data' }, { status: 400 });
     }
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('[TASKS POST]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

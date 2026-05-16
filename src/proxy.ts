@@ -6,7 +6,7 @@ const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || 'fallback-secret-for-dev-only'
 );
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const token = request.cookies.get('token')?.value;
   const { pathname } = request.nextUrl;
 
@@ -15,11 +15,10 @@ export async function middleware(request: NextRequest) {
     if (!token) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
-
     try {
       await jwtVerify(token, JWT_SECRET);
       return NextResponse.next();
-    } catch (error) {
+    } catch {
       return NextResponse.redirect(new URL('/login', request.url));
     }
   }
@@ -27,32 +26,24 @@ export async function middleware(request: NextRequest) {
   // Protect task API routes
   if (pathname.startsWith('/api/tasks')) {
     if (!token) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
     try {
       await jwtVerify(token, JWT_SECRET);
       return NextResponse.next();
-    } catch (error) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    } catch {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
   }
 
-  // Redirect authenticated users away from login/register
+  // Redirect already-authenticated users away from login/register
   if (pathname === '/login' || pathname === '/register') {
     if (token) {
       try {
         await jwtVerify(token, JWT_SECRET);
         return NextResponse.redirect(new URL('/dashboard', request.url));
-      } catch (error) {
-        // Invalid token, allow access to login/register
-        return NextResponse.next();
+      } catch {
+        // Invalid/expired token — allow access to login/register
       }
     }
   }

@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { getAuthUser } from '@/lib/auth';
 import { z } from 'zod';
 
 const updateSchema = z.object({
   title: z.string().min(1).optional(),
   dueDate: z.string().optional().nullable(),
+  priority: z.enum(['low', 'medium', 'high']).optional(),
 });
 
 export async function PUT(
@@ -20,15 +22,13 @@ export async function PUT(
 
     const { id } = await params;
     const body = await request.json();
-    const { title, dueDate } = updateSchema.parse(body);
+    const { title, dueDate, priority } = updateSchema.parse(body);
 
     const task = await prisma.task.update({
-      where: {
-        id,
-        userId: user.userId, // Isolation check
-      },
-      data: { 
-        ...(title && { title }),
+      where: { id, userId: user.userId },
+      data: {
+        ...(title !== undefined && { title }),
+        ...(priority !== undefined && { priority }),
         dueDate: dueDate === null ? null : dueDate ? new Date(dueDate) : undefined,
       },
     });
@@ -36,13 +36,16 @@ export async function PUT(
     return NextResponse.json(task);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.issues }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid request data' }, { status: 400 });
     }
-    // Prisma error if task doesn't exist for user
-    return NextResponse.json(
-      { error: 'Task not found or unauthorized' },
-      { status: 404 }
-    );
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2025'
+    ) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+    }
+    console.error('[TASK PUT]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -59,17 +62,18 @@ export async function DELETE(
     const { id } = await params;
 
     await prisma.task.delete({
-      where: {
-        id,
-        userId: user.userId, // Isolation check
-      },
+      where: { id, userId: user.userId },
     });
 
     return NextResponse.json({ message: 'Task deleted' });
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Task not found or unauthorized' },
-      { status: 404 }
-    );
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2025'
+    ) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+    }
+    console.error('[TASK DELETE]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

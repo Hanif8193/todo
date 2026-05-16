@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { getAuthUser } from '@/lib/auth';
 
 export async function PATCH(
@@ -14,27 +15,28 @@ export async function PATCH(
 
     const { id } = await params;
 
-    const currentTask = await prisma.task.findUnique({
+    const current = await prisma.task.findUnique({
       where: { id, userId: user.userId },
     });
 
-    if (!currentTask) {
-      return NextResponse.json(
-        { error: 'Task not found or unauthorized' },
-        { status: 404 }
-      );
+    if (!current) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     }
 
     const task = await prisma.task.update({
       where: { id },
-      data: { completed: !currentTask.completed },
+      data: { completed: !current.completed },
     });
 
     return NextResponse.json(task);
   } catch (error) {
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2025'
+    ) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+    }
+    console.error('[TASK COMPLETE]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
